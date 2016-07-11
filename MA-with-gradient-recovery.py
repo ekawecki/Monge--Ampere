@@ -191,10 +191,8 @@ eye = as_matrix([[1,0],[0,1]])
 gradu = as_vector([du0, du1])
 Hessu = as_matrix([[d2udxx, d2udxy], [d2udxy, d2udyy]])
 def g(a,b):
-    gee = abs(a)+abs(b)+1
+    gee = (1.0+a**2+b**2)**2
     return gee
-ge = x**2+y**2
-geee = project(ge,FES)
 #Calculating f(x,y) for benchmarking purposes.
 if benchmark == True:
     f = determinant(Hessu)/(dot(gradu,gradu)+1)**2
