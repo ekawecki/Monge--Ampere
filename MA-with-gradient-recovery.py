@@ -1,20 +1,13 @@
 """This program is currently set up to approximate the uniformly convex solution of the Monge--Ampere optimal mass transport equation, coinciding with the prescribed Gaussian curvature equation
-
     det( D^2 u(x, y) ) = f(x,y)*(|grad(u)|^2+1)^2,
-
-on the unit disk, with the boundary condition |grad(u)|^2-1=0, as well as some other domains such as an oval, and the union of a half oval and half unit disk.
-
-You can change boundary conditions, and domains, the specific choice of domain is based on the lack of a computable distance function to define the boundary conditions for polyhedral domains.
-
-This code uses an L^2 gradient recovery method producing optimal results for piecewise linear approximations.
-
-If you do use this code, please acknowledge the authors Ellya Kawecki, Omar Lakkis & Tristan Pryer.
-
-This code is compatible with an earlier release of FEniCS than the latest available version, so they may be some issues with domains, etc, please contact me if you have any problems. To download FEniCS, simply google "fenics", I recommend using either a Linux or Mac system.
-
-All options are at the top of the file are integer switches, change these to
-change the options.
-"""
+    on the unit disk, with the boundary condition |grad(u)|^2-1=0, as well as some other domains such as an oval, and the union of a half oval and half unit disk.
+    You can change boundary conditions, and domains, the specific choice of domain is based on the lack of a computable distance function to define the boundary conditions for polyhedral domains.
+    This code uses an L^2 gradient recovery method producing optimal results for piecewise linear approximations.
+    If you do use this code, please acknowledge the authors Ellya Kawecki, Omar Lakkis & Tristan Pryer.
+    This code is compatible with an earlier release of FEniCS than the latest available version, so they may be some issues with domains, etc, please contact me if you have any problems. To download FEniCS, simply google "fenics", I recommend using either a Linux or Mac system.
+    All options are at the top of the file are integer switches, change these to
+    change the options.
+    """
 
 __author__ = "Ellya Kawecki (ellya.kawecki@queens.ox.ac.uk / kawecki@maths.ox.ac.uk)"
 __date__ = "22-01-2015"
@@ -32,7 +25,7 @@ import mshr as mshr
 
 # Adaptivity options
 N = 5 #maximum number of sets of Newton iterations.
-experiment = True #True = Testing without mesh refinement.
+experiment = False #True = Testing without mesh refinement.
 if experiment == True:
     itermax = 1
 else:
@@ -52,13 +45,7 @@ prob = 0
 # Function spaces for the solution and Hessian
 solution_space = "CG"
 Hessian_solution_space = "CG"
-e_L2 = []; e_H1 = []; e_H2 = []; e_D2 = []; ndof = []; one = []; 
-
-#Creating files for visual output
-sol_file = File("monge.pvd")
-errorfile = File("monge-error.pvd")
-det_file = File("det.pvd")
-grad_file = File("grad.pvd")
+e_L2 = []; e_H1 = []; e_H2 = []; e_D2 = []; ndof = []; one = [];
 
 # Create the triangulation of the computational domain
 if domain==0:
@@ -101,8 +88,8 @@ FESH = FunctionSpace(mesh, Hessian_solution_space, deg)
 CG = FunctionSpace(mesh, "CG", deg)
 
 #Defining easy to call coordinates.
-x0 = Expression('x[0]')
-x1 = Expression('x[1]')
+x0 = Expression('x[0]', degree = 1)
+x1 = Expression('x[1]', degree = 1)
 x = project(x0,CG)
 y = project(x1,CG)
 
@@ -141,7 +128,7 @@ elif prob == 2:
 
 #Defining some elementary matrix and vector operations
 def tensorp(p, q):
-    ptq = as_matrix( [ [p[0]*q[0], p[0]*q[1] ], [p[1]*q[0], p[1]*q[1] ] ] ) 
+    ptq = as_matrix( [ [p[0]*q[0], p[0]*q[1] ], [p[1]*q[0], p[1]*q[1] ] ] )
     return ptq
 def determinant(M):
     deter = M[0][0]*M[1][1] - M[0][1]*M[1][0]
@@ -200,10 +187,6 @@ else:
     f = 1
 
 
-#Defining the cross product of our Finite element spaces.
-S = MixedFunctionSpace([FES, FESH, FESH, FESH])
-
-         
 #Defining our initial guess u_0
 u0 = u
 d2udxx0 = d2udxx
@@ -219,12 +202,12 @@ while (i < itermax):
             mesh = mesh
         else:
             dom = mshr.Circle(Point(0.0,0.0),1.0,60)
-            mesh = mshr.generate_mesh(dom,30*(i+1),"cgal")
+            mesh = UnitDiscMesh(mpi_comm_world(), 2**i, 2, 2)
     elif domain==1:
         if experiment == True:
             mesh = mesh
         else:
-            mesh = UnitSquareMesh(2**(i+2),2**(i+2))        
+            mesh = UnitSquareMesh(2**(i+2),2**(i+2))
     elif domain==2:
         if experiment ==True:
             mesh = mesh
@@ -256,27 +239,26 @@ while (i < itermax):
     FES = FunctionSpace(mesh, solution_space,deg)
     FESH = FunctionSpace(mesh, Hessian_solution_space, deg)
 
-    #Including a constant test space, so we can include the zero integral of the solution. As well as the spaces for gradient recovery.
-    Con = FunctionSpace(mesh, "R", 0)
-    G = FunctionSpace(mesh,"CG", deg)
-    G1 = FunctionSpace(mesh, "CG", deg)
-    S = MixedFunctionSpace([FES,FESH,FESH,FESH,G,G,Con])
+#Including a constant test space, so we can include the zero integral of the solution. As well as the spaces for gradient recovery.
+    Pk = FiniteElement("CG", mesh.ufl_cell(), deg)
+    Con = FiniteElement("R", mesh.ufl_cell(), 0)
+    S = FunctionSpace(mesh, Pk * Pk * Pk * Pk * Pk * Pk * Con)
     x = project(x0,FES)
     y = project(x1,FES)
     U = Function(S)
     V = TestFunction(S)
-
+    
     #Splitting the solution and test function into it's separate components for defining our nonlinear problem.
-    (uh, H00, H11, H01,duhx,duhy,c) = split(U)
-    (vh, phi00, phi11, phi01,duhxt,duhyt,d) = split(V)
-
-    #Defining unit normal for defining our nonlinear problem    
+    (uh, H00, H11, H01,duhx,duhy,c) = U
+    (vh, phi00, phi11, phi01,duhxt,duhyt,d) = V
+    
+    #Defining unit normal for defining our nonlinear problem
     n = FacetNormal(mesh)
-    h = CellSize(mesh)    
-
+    h = CellSize(mesh)
+    
     #Defining our Hessian to make our nonlinear form more compact
     Hessuh = as_matrix([[H00, H01], [H01, H11]])
-
+    
     #defining "toggleable" penalty parameter
     if PENALTY == True:
         penalty = h**2
@@ -292,12 +274,11 @@ while (i < itermax):
         + (-determinant(Hessuh)+f*g(duhx,duhy)) * vh * dx(mesh)\
         + (c*vh+uh*d)*dx\
         + ((uh.dx(0)-duhx)*duhxt+(uh.dx(1)-duhy)*duhyt)*dx(mesh)\
-        + ((uh.dx(0)-duhx)*duhxt+(uh.dx(1)-duhy)*duhyt)*ds(mesh)\
         + (penalty)*(unitcircledist(duhx,duhy)*vh)*ds(mesh)\
-
-    #Defining our updated "initial" guesses, i.e. u_1,u_2,... etc.        
+    
+    #Defining our updated "initial" guesses, i.e. u_1,u_2,... etc.
     if i == 0:
-        uh0 = project(u0, FES)    
+        uh0 = project(u0, FES)
         H000 = project(d2udxx0, FESH)
         H110 = project(d2udyy0, FESH)
         H010 = project(d2udxy0, FESH)
@@ -305,14 +286,14 @@ while (i < itermax):
         duhy0 = project(du1,FES)
         C0 = C
     else:
-        uh0 = project(uhold, FES)    
+        uh0 = project(uhold, FES)
         H000 = project(H00old, FESH)
         H110 = project(H11old, FESH)
         H010 = project(H01old, FESH)
-        duhx0 = project(duhxold, G1)
-        duhy0 = project(duhyold, G1)
+        duhx0 = project(duhxold, FES)
+        duhy0 = project(duhyold, FES)
         C0 = C
-
+    
     #Defining our updated "initial" guess as one expression
     class InitConditions(Expression):
         def __init__(self,u0, H000,H110,H010,duhx0,duhy0,C0):
@@ -333,20 +314,20 @@ while (i < itermax):
             value[6] = self.C0(x)
         def value_shape(self):
             return(7,)
-
-    #Setting our updated "initial" guess for use.           
-    init_guess = InitConditions(uh0,H000,H110,H010,duhx0,duhy0,C0)
-
-    #Projecting our "initial" guess on the finite element space        
+    
+    #Setting our updated "initial" guess for use.
+    init_guess = as_vector([uh0,H000,H110,H010,duhx0,duhy0,C0])
+    
+    #Projecting our "initial" guess on the finite element space
     U0 = project(init_guess, S)
-
-    #Defining our solution (which needs to be preset with an initial guess, which is then replaced when we apply the solver)     
+    
+    #Defining our solution (which needs to be preset with an initial guess, which is then replaced when we apply the solver)
     U.assign(U0)
-
+    
     #set log level, changes the amount of computation information given in the terminal, it does not affect the computation itself.
     PROGRESS = 16
     set_log_level(PROGRESS)
-
+    
     #Setting some solver parameters.
     solver_parameters = NonlinearVariationalSolver.default_parameters()
     solver_parameters.newton_solver.maximum_iterations = 20
@@ -355,18 +336,18 @@ while (i < itermax):
     solver_parameters.newton_solver.relaxation_parameter = 1.0
     solver_parameters.newton_solver.linear_solver = 'lu'
     solver_parameters.newton_solver.preconditioner = 'default'
-
+    
     #solving nonlinear problem
     solve(F == 0, U , solver_parameters=solver_parameters)
-
-    #splitting up solution for use in updating "initial" guesses.    
-    (uh, H00, H11, H01,duhx,duhy,C) = split(U)
-
+    
+    #splitting up solution for use in updating "initial" guesses.
+    (uh, H00, H11, H01,duhx,duhy,C) = U
+    
     #Generating more visual results (for use in paraview)
     #sol_file << project(uh,fes)
     #errorfile << project(u-uh,fes)
     #det_file << project(f,fesW)
-
+    
     #Defining error norms, when we put assemble(...) that integrates the input, that must be written as function*dx. (or *ds or *dS)
     erroru = (uh - u)**2*dx(mesh)
     errorp = (pow(grad(uh)[0] - du0,2) + pow(grad(uh)[1] - du1,2))*dx(mesh)
@@ -379,20 +360,20 @@ while (i < itermax):
     ep = sqrt(assemble(errorp)) # gradient error
     e2 = sqrt(assemble(error2)) # recovered gradient error
     e3 = sqrt(assemble(error3))
-
+    
     # Store them in a vector of size itermax
     e_L2.append(eu)
     e_H1.append(ep)
     e_H2.append(e2)
     e_D2.append(e3)
-
+    
     # Compute the number of degrees of freedom on the current mesh. For our mixed method it's dim(V) + d^2*dim(W)
     ndof.append(U.vector().array().size/4)
     one.append(10*U.vector().array().size**(-0.5)/4)
-
+    
     # Restart the time counter
     t = time()
-
+    
     #Defining updated "initial" guesses
     uhold = uh
     H00old = H00
@@ -421,26 +402,10 @@ for k in range(1,len(e_L2)):
     EOCD2.append(ln(e_D2[k-1]/(e_D2[k]))/ln(hm[k-1]/hm[k]))
 
 k = 0
-h = Function(FES) #empty function used to obtain size of function array
-XX = zeros((size(h.vector().array()),2))#array with with size(h) (1x2) zero vectors
-deriv1 = project(duhx,FES)
-deriv2 = project(duhy,FES)
-if deg>1:
-# creating array of image of G[Du_h] 
-    for (i, cell) in enumerate(cells(FES.mesh())):
-        XX[i] = [deriv1(FES.dofmap().tabulate_coordinates(cell)[0][0],FES.dofmap().tabulate_coordinates(cell)[0][1]),deriv2(FES.dofmap().tabulate_coordinates(cell)[0][0],FES.dofmap().tabulate_coordinates(cell)[0][1])]
-    plt.scatter(*zip(*XX))
-    plt.show()
-else:
-    print "Need to work out how to plot G[Du_h](\Omega) for P1 elements"
 e = zeros([k,2])
-while (k<itermax):
+for k in range(1,len(e_L2)):
     print "Number of DOFs = ", ndof[k]
     print "||u - u_h||_0 = ", e_L2[k], "   EOC = ", EOCL2[k]
-    print "||u - u_h||_1 = ", e_H1[k], "   EOC = ", EOCH1[k]
-    print "||u - u_h||_'2'=", e_H2[k], "   EOC = ", EOCH2[k]
-    k = k+1
-
-sol_file << project(uh,FES)
-plot(uh, interactive = True)
-
+    print "| u - u_h |_0 = ", e_H1[k], "   EOC = ", EOCH1[k]
+    print "||Du - G[u_h]||_0=", e_H2[k], "   EOC = ", EOCH2[k]
+    print "||D^2u - H_h[u_h]||_0=", e_D2[k], "   EOC = ", EOCD2[k]
