@@ -1,6 +1,6 @@
 # Monge--Ampere
 
-The Python scripts given in this repository is up to date with the current latest FeNiCs install (1.6), which can be downloaded 
+The Python scripts given in this repository are up to date with the current latest FeNiCs install (1.6), which can be downloaded 
 at https://fenicsproject.org/.
 
 FeNiCs is used for the automated solution of Partial Differential Equations. 
