@@ -10,7 +10,7 @@
     """
 
 __author__ = "Ellya Kawecki (ellya.kawecki@queens.ox.ac.uk / kawecki@maths.ox.ac.uk)"
-__date__ = "22-01-2015"
+__date__ = "09-11-2018"
 __copyright__ = "Copyright (C) 2015 Ellya Kawecki"
 __license__  = "GNU LGPL Version 2.1 (or whatever is the latest one)"
 
@@ -21,10 +21,13 @@ from time import clock, time
 import matplotlib.pyplot as plt
 from mshr import *
 import mshr as mshr
+from fenics import Point, mesh
+from mshr import Sphere, generate_mesh
+
 
 
 # Adaptivity options
-N = 5 #maximum number of sets of Newton iterations.
+N = 6 #maximum number of sets of Newton iterations.
 experiment = False #True = Testing without mesh refinement.
 if experiment == True:
     itermax = 1
@@ -34,13 +37,13 @@ tol = 5e-14        # Error tolerance
 # maximal number of iterations (in h)
 hm = zeros(itermax)
 benchmark = True
-print "Representing solution and Hessian via a 2-0 mixed system."
+print("Representing solution and Hessian via a 2-0 mixed system.")
 
 #Choose a domain
 domain = 0 #Choose a domain 0 = unit circle, 1 = Unit square, 2 = Square centred at 0 width 1, 4 = curved square, 5 = non symmetric domain, 6 = oval
 
 #Choose an initial guess, i.e. u_0
-prob = 0
+prob = 2
 
 # Function spaces for the solution and Hessian
 solution_space = "CG"
@@ -49,11 +52,12 @@ e_L2 = []; e_H1 = []; e_H2 = []; e_D2 = []; ndof = []; one = [];
 
 # Create the triangulation of the computational domain
 if domain==0:
-    dom = mshr.Circle(Point(0.0,0.0),1.0,60)
-    mesh = mshr.generate_mesh(dom,20,"cgal")
+    dom = Circle(Point(0, 0), 1)
+    mesh = generate_mesh(dom, 4)
     parameters['allow_extrapolation'] = True
+    print(mesh.hmax())
     PENALTY = False #toggling boundary condition penalty parameter
-    plot(mesh,interactive = True)
+#    plot(mesh,interactive = True)
 elif domain==1:
     mesh = UnitSquareMesh(50, 50)
     PENALTY = 1 #toggling boundary condition penalty parameter
@@ -76,10 +80,10 @@ elif domain == 6:
     mesh = Mesh("oval_mesh_ref45.xml")
     PENALTY = 1 #toggling boundary condition penalty parameter
 else:
-    print "No domain with that associated value, fool!"
+    print("No domain with that associated value, fool!")
 
 #choosing integration quadrature degree, choose 4 for P^2 elements, 16 for P^3 elements.
-parameters.form_compiler['quadrature_degree'] = 4
+parameters["form_compiler"]["quadrature_degree"] = 8
 
 #Defining finite element spaces, the last input is for the piece-wise polynomial degree.
 deg = 2
@@ -94,7 +98,7 @@ x = project(x0,CG)
 y = project(x1,CG)
 
 #calculating mesh size h
-h = CellSize(mesh)
+h = CellDiameter(mesh)
 hmin = mesh.hmin()
 
 
@@ -201,8 +205,10 @@ while (i < itermax):
         if experiment ==True:
             mesh = mesh
         else:
-            dom = mshr.Circle(Point(0.0,0.0),1.0,60)
-            mesh = UnitDiscMesh(mpi_comm_world(), 2**i, 2, 2)
+            dom = Circle(Point(0, 0), 1)
+            mesh = generate_mesh(dom, 2**(i+1))
+            parameters['allow_extrapolation'] = True
+            print(mesh.hmax())
     elif domain==1:
         if experiment == True:
             mesh = mesh
@@ -230,7 +236,7 @@ while (i < itermax):
         mesh=mesh
         parameters['allow_extrapolation'] = True
     else:
-        print "No domain with that associated value, fool!"
+        print("No domain with that associated value, fool!")
 
 
 
@@ -254,7 +260,7 @@ while (i < itermax):
     
     #Defining unit normal for defining our nonlinear problem
     n = FacetNormal(mesh)
-    h = CellSize(mesh)
+    h = CellDiameter(mesh)
     
     #Defining our Hessian to make our nonlinear form more compact
     Hessuh = as_matrix([[H00, H01], [H01, H11]])
@@ -277,10 +283,10 @@ while (i < itermax):
     
     #Defining our updated "initial" guesses, i.e. u_1,u_2,... etc.
     if i == 0:
-        uh0 = project(u0, FES)
-        H000 = project(d2udxx0, FESH)
-        H110 = project(d2udyy0, FESH)
-        H010 = project(d2udxy0, FESH)
+        uh0 = 0.5*(x**2+y**2)
+        H000 = Constant(1.0)
+        H110 = Constant(1.0)
+        H010 = Constant(0.0)
         C0 = C
     else:
         uh0 = project(uhold, FES)
@@ -321,12 +327,12 @@ while (i < itermax):
     
     #Setting some solver parameters.
     solver_parameters = NonlinearVariationalSolver.default_parameters()
-    solver_parameters.newton_solver.maximum_iterations = 20
-    solver_parameters.newton_solver.relative_tolerance = tol
-    solver_parameters.newton_solver.absolute_tolerance = tol
-    solver_parameters.newton_solver.relaxation_parameter = 1.0
-    solver_parameters.newton_solver.linear_solver = 'lu'
-    solver_parameters.newton_solver.preconditioner = 'default'
+    solver_parameters['newton_solver']['maximum_iterations'] = 20
+    solver_parameters['newton_solver']['relative_tolerance'] = tol
+    solver_parameters['newton_solver']['absolute_tolerance'] = tol
+    solver_parameters['newton_solver']['relaxation_parameter'] = 1.0
+    solver_parameters['newton_solver']['linear_solver'] = 'lu'
+    solver_parameters['newton_solver']['preconditioner'] = 'default'
     
     #solving nonlinear problem
     solve(F == 0, U , solver_parameters=solver_parameters)
@@ -356,8 +362,8 @@ while (i < itermax):
     e_D2.append(e3)
     
     # Compute the number of degrees of freedom on the current mesh. For our mixed method it's dim(V) + d^2*dim(W)
-    ndof.append(U.vector().array().size/4)
-    one.append(10*U.vector().array().size**(-0.5)/4)
+#ndof.append(U.vector().array().size/4)
+#one.append(10*U.vector().array().size**(-0.5)/4)
     
     # Restart the time counter
     t = time()
@@ -367,7 +373,7 @@ while (i < itermax):
     H00old = H00
     H11old = H11
     H01old = H01
-    hm[i] = mesh.hmin()
+    hm[i] = mesh.hmax()
     i = i+1
 
 EOCL2 = []
@@ -389,7 +395,8 @@ for k in range(1,len(e_L2)):
 k = 0
 e = zeros([k,2])
 for k in range(1,len(e_L2)):
-    print "Number of DOFs = ", ndof[k]
-    print "||u - u_h||_0 = ", e_L2[k], "   EOC = ", EOCL2[k]
-    print "| u - u_h |_0 = ", e_H1[k], "   EOC = ", EOCH1[k]
-    print "||D^2u - H_h[u_h]||_0=", e_D2[k], "   EOC = ", EOCD2[k]
+    #    print("Number of DOFs = ", ndof[k])
+    print("||u - u_h||_0 = ", e_L2[k], "   EOC = ", EOCL2[k])
+    print("| u - u_h |_1 = ", e_H1[k], "   EOC = ", EOCH1[k])
+    print("||D^2u - H_h[u_h]||_0=", e_D2[k], "   EOC = ", EOCD2[k])
+
