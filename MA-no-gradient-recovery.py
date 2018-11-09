@@ -9,7 +9,7 @@
     change the options.
     """
 
-__author__ = "Ellya Kawecki (ellya.kawecki@queens.ox.ac.uk / kawecki@maths.ox.ac.uk)"
+__author__ = "Ellya Kawecki (ekawecki@cct.lsu.edu / kawecki@maths.ox.ac.uk)"
 __date__ = "09-11-2018"
 __copyright__ = "Copyright (C) 2015 Ellya Kawecki"
 __license__  = "GNU LGPL Version 2.1 (or whatever is the latest one)"
